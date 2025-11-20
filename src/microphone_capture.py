@@ -45,11 +45,11 @@ def capture_microphone():
                 
                 # Print raw bytes
                 # Option 1: Print as hex representation
-                print(data.hex())
+                #print(data.hex())
                 
                 # Option 2: Uncomment below to print as raw bytes (may not display well in terminal)
-                # sys.stdout.buffer.write(data)
-                # sys.stdout.flush()
+                sys.stdout.buffer.write(data)
+                sys.stdout.flush()
                 
         except KeyboardInterrupt:
             print("\nStopping capture...", file=sys.stderr)

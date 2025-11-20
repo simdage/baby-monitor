@@ -4,9 +4,7 @@ services:
   baby-monitor:
     build: .
     container_name: baby-monitor
-    # Mount ALSA devices for Linux audio access
-    devices:
-      - /dev/snd:/dev/snd
+    devices: []
     # Add group access for audio devices
     group_add:
       - audio
