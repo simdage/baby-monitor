@@ -1,112 +1,118 @@
-import pyaudio
+import os
+import sys
+import time
 import numpy as np
 import torch
-import torchaudio
-import pandas as pd
-import io
-import requests
+import pyaudio
+from pathlib import Path
 
-# Import the PyTorch port of YAMNet
-from torch_vggish_yamnet import yamnet
+# Add project root to sys.path to allow imports from src
+project_root = str(Path(__file__).resolve().parents[2])
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
-def load_class_names():
-    # (Same as before)
-    url = "https://raw.githubusercontent.com/tensorflow/models/master/research/audioset/yamnet/yamnet_class_map.csv"
-    try:
-        s = requests.get(url).content
-        class_map = pd.read_csv(io.StringIO(s.decode('utf-8')))
-        return class_map['display_name'].tolist()
-    except Exception as e:
-        print("Error downloading class map.")
-        exit()
+from src.model.train_model import CryClassifier
+
+# Configuration
+SAMPLE_RATE = 16000
+WINDOW_DURATION = 7  # seconds
+WINDOW_SAMPLES = SAMPLE_RATE * WINDOW_DURATION  # 112000 samples
+CHUNK_SIZE = 4000  # Process in smaller chunks for responsiveness
+MODEL_PATH = os.path.join(project_root, "src/model/checkpoints/best_model.pt")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
-    print("Loading YAMNet model...")
-    model = yamnet.yamnet(pretrained=True)
-    model.eval()
-
-    class_names = load_class_names()
-    print('Class names: ', class_names)
-    print(len(class_names))
-    baby_cry_index = class_names.index("Baby cry, infant cry")
-
-    # --- VITAL: Define the Spectrogram Transformer ---
-    # YAMNet requires very specific settings:
-    # 16kHz SR, Window 25ms, Hop 10ms, 64 Mel Bands, 125-7500Hz
-    mel_transform = torchaudio.transforms.MelSpectrogram(
-        sample_rate=16000,
-        n_fft=512,
-        win_length=400,    # 25ms * 16000
-        hop_length=160,    # 10ms * 16000
-        f_min=125,
-        f_max=7500,
-        n_mels=64
-    )
-
-    # PyAudio Setup
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 1
-    RATE = 16000
-    # We need exactly 15600 samples for 0.975s
-    CHUNK = 15600 
+    print(f"Loading model from {MODEL_PATH}...")
     
-    audio = pyaudio.PyAudio()
-    stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, 
-                        input=True, frames_per_buffer=CHUNK)
+    # Load model
+    try:
+        checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
+        model = CryClassifier().to(DEVICE)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        print("Model loaded successfully!")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        return
 
-    print("\n🎤 Listening... (Press Ctrl+C to stop)")
+    # Audio buffer
+    audio_buffer = np.zeros(WINDOW_SAMPLES, dtype=np.float32)
+    
+    # PyAudio Setup
+    FORMAT = pyaudio.paFloat32
+    CHANNELS = 1
+    
+    p = pyaudio.PyAudio()
     
     try:
+        stream = p.open(format=FORMAT,
+                        channels=CHANNELS,
+                        rate=SAMPLE_RATE,
+                        input=True,
+                        frames_per_buffer=CHUNK_SIZE)
+        
+        print(f"\n🎤 Listening... (Buffer filling: {WINDOW_DURATION}s)")
+        print("Press Ctrl+C to stop")
+        
+        buffer_filled = False
+        samples_collected = 0
+        
         while True:
-            # 1. Read raw bytes
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            
-            # 2. Convert to float tensor [-1, 1]
-            numpy_data = np.frombuffer(data, dtype=np.int16)
-            waveform = torch.tensor(numpy_data, dtype=torch.float32) / 32768.0
-
-            # 3. --- FIX: Convert Waveform to Spectrogram ---
-            # Shape becomes: [64, 98] (Mel_Bands, Frames)
-            spec = mel_transform(waveform) 
-            
-            # 4. Apply Log (YAMNet expects Log-Mel)
-            # We add a small epsilon (0.001) to avoid log(0)
-            log_spec = torch.log(spec + 0.001)
-
-            # 5. Reshape for the Model
-            # YAMNet expects: [Batch, 1, Frames, Mel_Bands]
-            # Currently we have [Mel_Bands, Frames]. 
-            # We need to transpose to [Frames, Mel_Bands] -> [98, 64]
-            log_spec = log_spec.transpose(0, 1)
-            
-            # We slice to exactly 96 frames (YAMNet specific input size)
-            # Sometimes the math results in 97 or 98 frames, we trim to 96.
-            log_spec = log_spec[:96, :] 
-
-            # Add Batch and Channel dimensions: [1, 1, 96, 64]
-            model_input = log_spec.unsqueeze(0).unsqueeze(0)
-
-            # --- Inference ---
-            with torch.no_grad():
-                _, prediction = model(model_input)
+            # Read audio chunk
+            try:
+                data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+                chunk = np.frombuffer(data, dtype=np.float32)
                 
-            prediction = prediction.squeeze()
-            softmax_prediction = torch.softmax(prediction, dim=0)
-            max_index = torch.argmax(softmax_prediction)
-            max_prob = softmax_prediction[max_index].item()
-            max_name = class_names[max_index]
-            print(f"Max probability: {max_prob:.2f} for {max_name}")
-            if softmax_prediction[baby_cry_index].item() > 0.3:
-                print(f"\033[91m👶 BABY CRYING! {softmax_prediction[baby_cry_index].item():.2f}\033[0m")
-            else:
-                print(f"{softmax_prediction[baby_cry_index].item():.2f}", end='\r')
-
+                # Update buffer (sliding window)
+                audio_buffer = np.roll(audio_buffer, -len(chunk))
+                audio_buffer[-len(chunk):] = chunk
+                
+                samples_collected += len(chunk)
+                
+                if not buffer_filled:
+                    if samples_collected >= WINDOW_SAMPLES:
+                        buffer_filled = True
+                        print("Buffer full, starting predictions...")
+                    else:
+                        progress = min(100, int(100 * samples_collected / WINDOW_SAMPLES))
+                        print(f"Filling buffer: {progress}%", end='\r')
+                        continue
+                
+                # Prepare input for model
+                # Model expects [batch, 1, samples]
+                waveform = torch.from_numpy(audio_buffer).float().to(DEVICE)
+                
+                # Normalize if needed (though PyAudio float32 is usually -1 to 1)
+                if waveform.abs().max() > 1.0:
+                     waveform = waveform / waveform.abs().max()
+                
+                input_tensor = waveform.unsqueeze(0).unsqueeze(0)
+                
+                # Inference
+                with torch.no_grad():
+                    outputs = model(input_tensor)
+                    probs = torch.softmax(outputs, dim=1)
+                    cry_prob = probs[0][1].item()
+                
+                # Output result
+                if cry_prob > 0.5:
+                    print(f"\033[91m👶 BABY CRYING! Probability: {cry_prob:.2f}\033[0m")
+                else:
+                    print(f"Normal ({cry_prob:.2f})", end='\r')
+                    
+            except IOError as e:
+                print(f"Audio error: {e}")
+                continue
+                
     except KeyboardInterrupt:
         print("\nStopping...")
+    except Exception as e:
+        print(f"\nError: {e}")
     finally:
-        stream.stop_stream()
-        stream.close()
-        audio.terminate()
+        if 'stream' in locals():
+            stream.stop_stream()
+            stream.close()
+        p.terminate()
 
 if __name__ == "__main__":
     main()
