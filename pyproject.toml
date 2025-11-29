@@ -3,7 +3,7 @@ name = "baby-monitor"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = "==3.12"
 dependencies = [
     "pip>=25.3",
     "pyaudio>=0.2.14",
@@ -12,4 +12,5 @@ dependencies = [
     "numpy>=1.24.0",
     "tqdm>=4.65.0",
     "librosa>=0.10.0",
+    "requests>=2.31.0",
 ]

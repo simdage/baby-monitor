@@ -1,10 +1,14 @@
 import os
 import sys
 import time
+import requests
 import numpy as np
 import torch
 import pyaudio
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Add project root to sys.path to allow imports from src
 project_root = str(Path(__file__).resolve().parents[2])
@@ -21,8 +25,39 @@ CHUNK_SIZE = 4000  # Process in smaller chunks for responsiveness
 MODEL_PATH = os.path.join(project_root, "src/model/checkpoints/best_model.pt")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Alert Configuration
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+ALERT_COOLDOWN = 60  # seconds
+last_alert_time = 0
+
+def send_slack_alert(probability):
+    """Send a Slack notification if configured."""
+    global last_alert_time
+    
+    if not SLACK_WEBHOOK_URL:
+        return
+        
+    current_time = time.time()
+    if current_time - last_alert_time < ALERT_COOLDOWN:
+        return
+        
+    try:
+        message = f"👶 Baby Crying Detected! Probability: {probability:.2f}"
+        payload = {"text": message}
+        response = requests.post(SLACK_WEBHOOK_URL, json=payload)
+        response.raise_for_status()
+        print(f"\n[Alert Sent] {message}")
+        last_alert_time = current_time
+    except Exception as e:
+        print(f"\n[Alert Failed] {e}")
+
 def main():
     print(f"Loading model from {MODEL_PATH}...")
+    
+    if not SLACK_WEBHOOK_URL:
+        print("⚠️  SLACK_WEBHOOK_URL not set. Alerts will be disabled.")
+    else:
+        print("✅ Slack alerts enabled.")
     
     # Load model
     try:
@@ -97,6 +132,7 @@ def main():
                 # Output result
                 if cry_prob > 0.5:
                     print(f"\033[91m👶 BABY CRYING! Probability: {cry_prob:.2f}\033[0m")
+                    send_slack_alert(cry_prob)
                 else:
                     print(f"Normal ({cry_prob:.2f})", end='\r')
                     
