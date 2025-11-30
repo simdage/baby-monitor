@@ -16,6 +16,8 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.model.train_model import CryClassifier
+import src.detection_service.db as db
+from src.detection_service.publisher import Publisher
 
 # Configuration
 SAMPLE_RATE = 16000
@@ -58,9 +60,10 @@ def load_model():
         model.load_state_dict(checkpoint['model_state_dict'])
         model.eval()
         print("Model loaded successfully!")
+        return model
     except Exception as e:
         print(f"Error loading model: {e}")
-        return
+        return None
 
 def predict_cry(model, audio_buffer):
     waveform = torch.from_numpy(audio_buffer).float().to(DEVICE)
@@ -83,6 +86,12 @@ def predict_cry(model, audio_buffer):
 def main():
     print(f"Loading model from {MODEL_PATH}...")
     
+    # Initialize DB
+    db.init_db()
+    
+    # Initialize Publisher
+    publisher = Publisher()
+    
     if not SLACK_WEBHOOK_URL:
         print("⚠️  SLACK_WEBHOOK_URL not set. Alerts will be disabled.")
     else:
@@ -90,6 +99,8 @@ def main():
     
     # Load model
     model = load_model()
+    if model is None:
+        return
     
     # Audio buffer
     audio_buffer = np.zeros(WINDOW_SAMPLES, dtype=np.float32)
@@ -136,8 +147,17 @@ def main():
                 
                 cry_prob = predict_cry(model, audio_buffer)
                 
+                # Log to DB
+                is_cry = cry_prob > 0.5
+                db.log_prediction(cry_prob, is_cry)
+                
+                # Publish to Cloud
+                # We publish every prediction to allow full observability
+                # The publisher handles queueing to avoid blocking
+                publisher.publish(cry_prob, is_cry, audio_buffer)
+                
                 # Output result
-                if cry_prob > 0.5:
+                if is_cry:
                     print(f"\033[91m👶 BABY CRYING! Probability: {cry_prob:.2f}\033[0m")
                     send_slack_alert(cry_prob)
                 else:
@@ -156,6 +176,7 @@ def main():
             stream.stop_stream()
             stream.close()
         p.terminate()
+        publisher.stop()
 
 if __name__ == "__main__":
     main()
