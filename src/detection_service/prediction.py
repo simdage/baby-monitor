@@ -51,15 +51,7 @@ def send_slack_alert(probability):
     except Exception as e:
         print(f"\n[Alert Failed] {e}")
 
-def main():
-    print(f"Loading model from {MODEL_PATH}...")
-    
-    if not SLACK_WEBHOOK_URL:
-        print("⚠️  SLACK_WEBHOOK_URL not set. Alerts will be disabled.")
-    else:
-        print("✅ Slack alerts enabled.")
-    
-    # Load model
+def load_model():
     try:
         checkpoint = torch.load(MODEL_PATH, map_location=DEVICE)
         model = CryClassifier().to(DEVICE)
@@ -70,6 +62,35 @@ def main():
         print(f"Error loading model: {e}")
         return
 
+def predict_cry(model, audio_buffer):
+    waveform = torch.from_numpy(audio_buffer).float().to(DEVICE)
+    
+    # Normalize if needed (though PyAudio float32 is usually -1 to 1)
+    if waveform.abs().max() > 1.0:
+         waveform = waveform / waveform.abs().max()
+    
+    input_tensor = waveform.unsqueeze(0).unsqueeze(0)
+    
+    # Inference
+    with torch.no_grad():
+        outputs = model(input_tensor)
+        probs = torch.softmax(outputs, dim=1)
+        cry_prob = probs[0][1].item()
+    
+    return cry_prob
+
+
+def main():
+    print(f"Loading model from {MODEL_PATH}...")
+    
+    if not SLACK_WEBHOOK_URL:
+        print("⚠️  SLACK_WEBHOOK_URL not set. Alerts will be disabled.")
+    else:
+        print("✅ Slack alerts enabled.")
+    
+    # Load model
+    model = load_model()
+    
     # Audio buffer
     audio_buffer = np.zeros(WINDOW_SAMPLES, dtype=np.float32)
     
@@ -113,21 +134,7 @@ def main():
                         print(f"Filling buffer: {progress}%", end='\r')
                         continue
                 
-                # Prepare input for model
-                # Model expects [batch, 1, samples]
-                waveform = torch.from_numpy(audio_buffer).float().to(DEVICE)
-                
-                # Normalize if needed (though PyAudio float32 is usually -1 to 1)
-                if waveform.abs().max() > 1.0:
-                     waveform = waveform / waveform.abs().max()
-                
-                input_tensor = waveform.unsqueeze(0).unsqueeze(0)
-                
-                # Inference
-                with torch.no_grad():
-                    outputs = model(input_tensor)
-                    probs = torch.softmax(outputs, dim=1)
-                    cry_prob = probs[0][1].item()
+                cry_prob = predict_cry(model, audio_buffer)
                 
                 # Output result
                 if cry_prob > 0.5:
