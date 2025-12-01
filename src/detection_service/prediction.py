@@ -8,7 +8,12 @@ import pyaudio
 from pathlib import Path
 from dotenv import load_dotenv
 
+
+# Configuration
 load_dotenv()
+
+# Apply google credentials
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 # Add project root to sys.path to allow imports from src
 project_root = str(Path(__file__).resolve().parents[2])
@@ -19,7 +24,6 @@ from src.model.train_model import CryClassifier
 import src.detection_service.db as db
 from src.detection_service.publisher import Publisher
 
-# Configuration
 SAMPLE_RATE = 16000
 WINDOW_DURATION = 7  # seconds
 WINDOW_SAMPLES = SAMPLE_RATE * WINDOW_DURATION  # 112000 samples

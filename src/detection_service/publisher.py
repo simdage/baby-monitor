@@ -6,6 +6,9 @@ import threading
 import queue
 from google.cloud import pubsub_v1
 from google.api_core import exceptions
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Publisher:
     def __init__(self):
