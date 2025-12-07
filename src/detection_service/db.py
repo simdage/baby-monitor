@@ -1,6 +1,10 @@
 import sqlite3
 import time
+import os
 from pathlib import Path
+from google.cloud import bigquery
+from dotenv import load_dotenv
+load_dotenv()
 
 # Database path
 DB_PATH = Path(__file__).resolve().parents[2] / "predictions.db"
@@ -42,3 +46,33 @@ def get_recent_predictions(limit=1000):
     data = c.fetchall()
     conn.close()
     return data
+
+def get_recent_predictions_bigquery(limit=500):
+    """Get recent predictions from BigQuery."""
+    # TODO: Replace with your actual Project ID and Table ID
+    project_id = os.getenv("GCP_PROJECT_ID") 
+    table_id = os.getenv("BIGQUERY_TABLE_ID")
+    
+    client = bigquery.Client(project=project_id)
+    
+    query = f"""
+        SELECT timestamp, probability, is_cry, audio_gcs_uri
+        FROM `{table_id}`
+        ORDER BY timestamp DESC
+        LIMIT {limit}
+    """
+    
+    try:
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        # Convert to list of dicts or tuples to match existing format
+        # existing format seems to be list of tuples: (timestamp, probability, is_cry)
+        data = []
+        for row in results:
+            data.append((row.timestamp.timestamp(), row.probability, row.is_cry, row.audio_gcs_uri))
+            
+        return data
+    except Exception as e:
+        print(f"Error querying BigQuery: {e}")
+        return []

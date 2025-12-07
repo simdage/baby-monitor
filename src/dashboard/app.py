@@ -4,6 +4,13 @@ import time
 import sys
 from pathlib import Path
 
+import base64
+import io
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.io import wavfile
+from google.cloud import storage
+
 # Add project root to sys.path
 project_root = str(Path(__file__).resolve().parents[2])
 if project_root not in sys.path:
@@ -25,12 +32,16 @@ if st.checkbox("Auto-refresh", value=True):
     st.rerun()
 
 # Fetch data
-data = db.get_recent_predictions(limit=500)
+# Switch to BigQuery
+data = db.get_recent_predictions_bigquery(limit=500)
+
+print("Data:", data)
+# data = db.get_recent_predictions(limit=500) # Fallback to SQLite
 
 if not data:
     st.warning("No data available yet. Start the prediction service!")
 else:
-    df = pd.DataFrame(data, columns=["timestamp", "probability", "is_cry"])
+    df = pd.DataFrame(data, columns=["timestamp", "probability", "is_cry", "audio_gcs_uri"])
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="s")
     df = df.sort_values("timestamp")
 
@@ -67,3 +78,69 @@ else:
         )
     else:
         st.info("No recent alerts.")
+
+    # Audio Analysis
+    st.subheader("Audio Analysis")
+    
+    # Create a label with timestamp and probability
+    df['label'] = df['datetime'].dt.strftime('%Y-%m-%d %H:%M:%S') + " (Prob: " + df['probability'].apply(lambda x: f"{x:.2f}") + ")"
+    
+    # Default to the most recent record
+    selected_label = st.selectbox("Select Record", df['label'].tolist(), index=len(df)-1) # default to last
+    
+    # Get the selected row
+    selected_row = df[df['label'] == selected_label].iloc[0]
+    
+    if selected_row['audio_gcs_uri']:
+        try:
+            # Handle potential None if column is null
+            if pd.isna(selected_row['audio_gcs_uri']):
+                 st.info("No audio data available for this record.")
+            else:
+                # Download from GCS
+                gcs_uri = selected_row['audio_gcs_uri']
+                
+                # Simple parsing of gs://bucket/path
+                if gcs_uri.startswith("gs://"):
+                    parts = gcs_uri.replace("gs://", "").split("/", 1)
+                    bucket_name = parts[0]
+                    blob_name = parts[1]
+                    
+                    storage_client = storage.Client()
+                    bucket = storage_client.bucket(bucket_name)
+                    blob = bucket.blob(blob_name)
+                    
+                    audio_bytes = blob.download_as_bytes()
+                else:
+                    st.error(f"Invalid GCS URI: {gcs_uri}")
+                    audio_bytes = None
+
+                if audio_bytes:
+                    # Play Audio
+                    st.audio(audio_bytes, format='audio/wav')
+                    
+                    # Spectrogram
+                    try:
+                        # BytesIO to read as file
+                        wav_file = io.BytesIO(audio_bytes)
+                        rate, data = wavfile.read(wav_file)
+                        
+                        # If stereo, take one channel
+                        if len(data.shape) > 1:
+                            data = data[:, 0]
+                            
+                        fig, ax = plt.subplots(figsize=(10, 4))
+                        Pxx, freqs, bins, im = ax.specgram(data, Fs=rate)
+                        ax.set_title("Spectrogram")
+                        ax.set_ylabel("Frequency")
+                        ax.set_xlabel("Time")
+                        st.pyplot(fig)
+                        plt.close(fig) 
+                        
+                    except Exception as e:
+                        st.error(f"Error generating spectrogram: {e}")
+                
+        except Exception as e:
+            st.error(f"Error loading audio from GCS: {e}")
+    else:
+        st.info("No audio data available for this record.")
