@@ -46,6 +46,32 @@ def get_history():
         print(f"Error fetching history: {e}")
         return []
 
+class LogEventRequest(BaseModel):
+    event_type: str
+    notes: str
+    timestamp: str # ISO string 
+    intensity: str
+
+@app.post("/api/log")
+def log_event(event: LogEventRequest):
+    """Log a manual event."""
+    success = db.log_manual_event_bigquery(
+        event_type=event.event_type,
+        notes=event.notes,
+        timestamp_iso=event.timestamp,
+        intensity=event.intensity
+    )
+    
+    if success:
+        return {"status": "success"}
+    else:
+        return {"status": "error", "message": "Failed to log event"}, 500
+
+@app.get("/api/logs")
+def get_logs():
+    """Fetch manual logs."""
+    return db.get_manual_logs_bigquery()
+
 # Mount static files - this will serve the built React app
 # We only do this if the directory exists (it will in Docker)
 static_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'dist')

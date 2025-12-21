@@ -76,3 +76,66 @@ def get_recent_predictions_bigquery(limit=500):
     except Exception as e:
         print(f"Error querying BigQuery: {e}")
         return []
+
+def log_manual_event_bigquery(event_type, notes, timestamp_iso, intensity):
+    """Log a manual event to BigQuery."""
+    project_id = os.getenv("GCP_PROJECT_ID")
+    # Default to daily_logs if not specified
+    table_id = os.getenv("BIGQUERY_LOGS_TABLE_ID", "baby_analytics.daily_logs")
+    
+    client = bigquery.Client(project=project_id, location="northamerica-northeast1")
+    
+    # Table schema expected: event_type (STRING), notes (STRING), timestamp (TIMESTAMP), intensity (STRING)
+    # Ensure correct format for BQ
+    row_to_insert = {
+        "event_type": event_type,
+        "notes": notes,
+        "event_timestamp": timestamp_iso, # Expecting ISO string or datetime
+        "intensity": intensity
+    }
+    
+    try:
+        table_ref = f"{project_id}.{table_id}"
+        errors = client.insert_rows_json(table_ref, [row_to_insert])
+        
+        if errors:
+            print(f"BigQuery Errors: {errors}")
+            return False
+        return True
+    except Exception as e:
+        print(f"Error inserting into BigQuery: {e}")
+        return False
+
+def get_manual_logs_bigquery(limit=100):
+    """Fetch recent manual logs from BigQuery."""
+    project_id = os.getenv("GCP_PROJECT_ID")
+    table_id = os.getenv("BIGQUERY_LOGS_TABLE_ID", "baby_analytics.daily_logs")
+    
+    client = bigquery.Client(project=project_id, location="northamerica-northeast1")
+    
+    query = f"""
+        SELECT event_type, notes, event_timestamp, intensity
+        FROM `{project_id}.{table_id}`
+        ORDER BY event_timestamp DESC
+        LIMIT {limit}
+    """
+    
+    try:
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        data = []
+        for row in results:
+            # Return dicts directly
+            data.append({
+                "type": row.event_type,
+                "details": row.notes,
+                "timestamp": row.event_timestamp.timestamp(), # Return epoch for consistency
+                "time_display": row.event_timestamp.strftime("%I:%M %p"), # Pre-format time string
+                "intensity": row.intensity
+            })
+            
+        return data
+    except Exception as e:
+        print(f"Error querying BigQuery Logs: {e}")
+        return []

@@ -82,23 +82,19 @@ const Card = ({ title, children, className = "", subtitle = "" }) => (
 
 // --- Main Views ---
 
-const AnalyticsView = () => {
+const AnalyticsView = ({ logs }) => {
   const [cryingData, setCryingData] = useState([]);
 
   useEffect(() => {
     fetch('/api/history')
       .then(res => res.json())
       .then(data => {
-        // Transform backend data to chart format
-        // Backend returns: { timestamp, probability, is_cry, gcs_uri } (descending)
         if (data && data.length > 0) {
           const formatted = data.reverse().map(d => {
             const date = new Date(d.timestamp * 1000);
             return {
               time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              // Use probability * 100 for prediction
               predicted: Math.round(d.probability * 100),
-              // Visualization: If it was classified as cry, show high intensity, else low
               intensity: d.is_cry ? Math.max(Math.round(d.probability * 100), 60) : Math.round(d.probability * 20)
             };
           });
@@ -108,20 +104,21 @@ const AnalyticsView = () => {
       .catch(err => console.error("Failed to fetch history:", err));
   }, []);
 
-  // Process LOG_HISTORY for charting
+  // Process logs for charting
   const eventCounts = useMemo(() => {
     const counts = { feeding: 0, pee: 0, poop: 0 };
-    LOG_HISTORY.forEach(item => {
+    logs.forEach(item => {
+      // item.type examples: 'feeding', 'pee', 'poop' (mapped from database)
       if (item.type === 'feeding') counts.feeding++;
-      if (item.type === 'diaper_pee') counts.pee++;
-      if (item.type === 'diaper_poop') counts.poop++;
+      if (item.type === 'pee') counts.pee++;
+      if (item.type === 'poop') counts.poop++;
     });
     return [
       { name: 'Feeding', value: counts.feeding, color: '#6366f1' },
       { name: 'Pee', value: counts.pee, color: '#10b981' },
       { name: 'Poop', value: counts.poop, color: '#f59e0b' },
     ];
-  }, []);
+  }, [logs]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -213,13 +210,13 @@ const AnalyticsView = () => {
 
         <Card title="Unified Activity Timeline" subtitle="Correlation of physical needs and behavior">
           <div className="mt-4 relative pl-8 space-y-6 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
-            {LOG_HISTORY.map((event, idx) => (
-              <div key={event.id} className="relative">
+            {logs.map((event, idx) => (
+              <div key={idx} className="relative">
                 <div className={`absolute -left-8 top-1.5 w-6 h-6 rounded-full border-4 border-white shadow-sm flex items-center justify-center
-                  ${event.type === 'feeding' ? 'bg-blue-500' : event.type.includes('poop') ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                  ${event.type === 'feeding' ? 'bg-blue-500' : event.type === 'poop' ? 'bg-amber-500' : 'bg-emerald-500'}`}
                 >
                   {event.type === 'feeding' ? <Milk size={10} className="text-white" /> :
-                    event.type.includes('poop') ? <span className="text-[10px]">💩</span> :
+                    event.type === 'poop' ? <span className="text-[10px]">💩</span> :
                       <Waves size={10} className="text-white" />}
                 </div>
                 <div className="flex items-center justify-between">
@@ -228,7 +225,7 @@ const AnalyticsView = () => {
                     <p className="text-xs text-slate-400">{event.details}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-bold text-slate-500">{event.time}</p>
+                    <p className="text-xs font-bold text-slate-500">{event.time_display}</p>
                     {/* Visual context of crying intensity at that time */}
                     <div className="mt-1 flex space-x-1 justify-end">
                       {[1, 2, 3, 4, 5].map(tick => (
@@ -250,6 +247,10 @@ const AnalyticsView = () => {
     </div>
   );
 };
+
+// ... LabelingView omitted for brevity (unchanged) ...
+
+
 
 const LabelingView = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -340,8 +341,44 @@ const LabelingView = () => {
   );
 };
 
-const LoggingView = () => {
+const LoggingView = ({ logs }) => {
   const [selectedType, setSelectedType] = useState(null);
+  const [notes, setNotes] = useState('');
+  const [time, setTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+  const [intensity, setIntensity] = useState('Medium');
+  const [status, setStatus] = useState('');
+
+  const handleLog = async () => {
+    setStatus('Logging...');
+
+    const now = new Date();
+    const [hours, minutes] = time.split(':');
+    const timestampDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hours), parseInt(minutes));
+
+    try {
+      const response = await fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: selectedType,
+          notes: notes,
+          timestamp: timestampDate.toISOString(),
+          intensity: intensity
+        })
+      });
+
+      if (response.ok) {
+        setStatus('Saved!');
+        setNotes('');
+        setTimeout(() => setStatus(''), 2000);
+      } else {
+        setStatus('Error saving');
+      }
+    } catch (e) {
+      console.error(e);
+      setStatus('Error saving');
+    }
+  };
 
   const eventTypes = [
     { id: 'feeding', icon: Milk, label: 'Feeding', color: 'bg-blue-100 text-blue-600' },
@@ -377,6 +414,8 @@ const LoggingView = () => {
                 <textarea
                   className="w-full bg-slate-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-indigo-500 h-32"
                   placeholder={`Describe the ${selectedType} event...`}
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
                 />
               </div>
               <div className="flex items-center space-x-4">
@@ -384,20 +423,33 @@ const LoggingView = () => {
                   <label className="block text-sm font-medium text-slate-500 mb-2">Time</label>
                   <div className="relative">
                     <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input type="time" className="w-full bg-slate-50 border-none rounded-xl pl-12 pr-4 py-3" defaultValue="14:16" />
+                    <input
+                      type="time"
+                      className="w-full bg-slate-50 border-none rounded-xl pl-12 pr-4 py-3"
+                      value={time}
+                      onChange={e => setTime(e.target.value)}
+                    />
                   </div>
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-slate-500 mb-2">Intensity/Amount</label>
-                  <select className="w-full bg-slate-50 border-none rounded-xl px-4 py-3">
+                  <select
+                    className="w-full bg-slate-50 border-none rounded-xl px-4 py-3"
+                    value={intensity}
+                    onChange={e => setIntensity(e.target.value)}
+                  >
                     <option>Small</option>
                     <option>Medium</option>
                     <option>Large</option>
                   </select>
                 </div>
               </div>
-              <button className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
-                Log Event
+              <button
+                onClick={handleLog}
+                className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"
+                disabled={status === 'Logging...'}
+              >
+                {status || 'Log Event'}
               </button>
             </div>
           ) : (
@@ -410,19 +462,19 @@ const LoggingView = () => {
 
         <Card title="Recent History">
           <div className="space-y-4">
-            {LOG_HISTORY.map(item => (
-              <div key={item.id} className="flex items-center space-x-3 group cursor-pointer">
+            {logs.map((item, idx) => (
+              <div key={idx} className="flex items-center space-x-3 group cursor-pointer">
                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
                   {item.type === 'feeding' ? <Milk size={18} /> :
-                    item.type === 'diaper_pee' ? <Waves size={18} /> :
-                      item.type === 'diaper_poop' ? <PoopIcon size={18} /> :
+                    item.type === 'pee' ? <Waves size={18} /> :
+                      item.type === 'poop' ? <PoopIcon size={18} /> :
                         <ClipboardList size={18} />}
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-slate-700 capitalize">{item.type.replace('_', ' ')}</p>
                   <p className="text-xs text-slate-400">{item.details}</p>
                 </div>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded uppercase">{item.time}</span>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded uppercase">{item.time_display}</span>
               </div>
             ))}
             <button className="w-full text-center text-xs font-bold text-indigo-600 mt-4 hover:underline">
@@ -437,13 +489,21 @@ const LoggingView = () => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('analytics');
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/logs')
+      .then(res => res.json())
+      .then(data => setLogs(data))
+      .catch(err => console.error("Failed to fetch logs:", err));
+  }, [activeTab]); // Refetch on tab change to update simple cache
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'analytics': return <AnalyticsView />;
+      case 'analytics': return <AnalyticsView logs={logs} />;
       case 'labeling': return <LabelingView />;
-      case 'logging': return <LoggingView />;
-      default: return <AnalyticsView />;
+      case 'logging': return <LoggingView logs={logs} />;
+      default: return <AnalyticsView logs={logs} />;
     }
   };
 
