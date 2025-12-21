@@ -56,9 +56,9 @@ def get_recent_predictions_bigquery(limit=500):
     client = bigquery.Client(project=project_id)
     
     query = f"""
-        SELECT timestamp, probability, is_cry, audio_gcs_uri
-        FROM `{table_id}`
-        ORDER BY timestamp DESC
+        SELECT event_timestamp, probability, is_cry, gcs_uri
+        FROM `{project_id}.{table_id}`
+        ORDER BY event_timestamp DESC
         LIMIT {limit}
     """
     
@@ -70,7 +70,7 @@ def get_recent_predictions_bigquery(limit=500):
         # existing format seems to be list of tuples: (timestamp, probability, is_cry)
         data = []
         for row in results:
-            data.append((row.timestamp.timestamp(), row.probability, row.is_cry, row.audio_gcs_uri))
+            data.append((row.event_timestamp.timestamp(), row.probability, row.is_cry, row.gcs_uri))
             
         return data
     except Exception as e:

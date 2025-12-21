@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LittleWatch Baby Monitor</title>
+    <!-- Add Tailwind via CDN for simplicity in this setup, or we can set up postcss. 
+         Since the plan didn't explicitly mention full Tailwind setup, CDN is safer for a single-file convert.
+         However, the user's code uses tailwind classes heavily. 
+         Let's try to add the actual tailwind config if possible, but for now CDN is a quick win to make sure it looks right immediately. 
+         Actually, let's just stick to the plan. I included tailwind in package.json devDeps. 
+         I should also create postcss.config.js and tailwind.config.js if I want it to build properly. 
+         Or just add the CDN link as a fallback. 
+         Let's stick to standard build. Accessing via CDN is strictly discouraged for production apps but this is a containerized app so local build is better.
+         I will create tailwind.config.js next.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

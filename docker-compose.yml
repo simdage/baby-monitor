@@ -3,11 +3,17 @@ version: '3.8'
 services:
   baby-monitor:
     build: .
-    container_name: baby-monitor
-    devices: []
-    # Add group access for audio devices
-    group_add:
-      - audio
-    stdin_open: true
-    tty: true
-
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount Google Cloud Credentials from the host
+      - ~/.config/gcloud:/root/.config/gcloud
+    environment:
+      # Use the application default credentials found in the mounted volume
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
+      # Ensure these match your actual cloud setup
+      - GCP_PROJECT_ID=baby-monitor-479819
+      - BIGQUERY_TABLE_ID=baby_monitor.cry_events
+      - GCS_BUCKET_NAME=baby-monitor-audio-bucket
+      # Optional Slack Webhook
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
