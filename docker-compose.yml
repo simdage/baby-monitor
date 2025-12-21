@@ -13,7 +13,7 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
       # Ensure these match your actual cloud setup
       - GCP_PROJECT_ID=baby-monitor-479819
-      - BIGQUERY_TABLE_ID=baby_monitor.cry_events
-      - GCS_BUCKET_NAME=baby-monitor-audio-bucket
+      - BIGQUERY_TABLE_ID=baby_analytics.predictions
+      - GCS_BUCKET_NAME=audio_logs
       # Optional Slack Webhook
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}

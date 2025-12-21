@@ -53,7 +53,7 @@ def get_recent_predictions_bigquery(limit=500):
     project_id = os.getenv("GCP_PROJECT_ID") 
     table_id = os.getenv("BIGQUERY_TABLE_ID")
     
-    client = bigquery.Client(project=project_id)
+    client = bigquery.Client(project=project_id, location="northamerica-northeast1")
     
     query = f"""
         SELECT event_timestamp, probability, is_cry, gcs_uri
