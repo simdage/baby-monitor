@@ -138,7 +138,22 @@ else:
                         plt.close(fig) 
                         
                     except Exception as e:
-                        st.error(f"Error generating spectrogram: {e}")
+                        # Fallback for raw PCM (legacy/broken files)
+                        try:
+                            # Assuming 16kHz float32 mono based on prediction service
+                            data = np.frombuffer(audio_bytes, dtype=np.float32)
+                            rate = 16000
+                            
+                            fig, ax = plt.subplots(figsize=(10, 4))
+                            Pxx, freqs, bins, im = ax.specgram(data, Fs=rate)
+                            ax.set_title("Spectrogram (Raw PCM fallback)")
+                            ax.set_ylabel("Frequency")
+                            ax.set_xlabel("Time")
+                            st.pyplot(fig)
+                            plt.close(fig)
+                            st.warning("Visualization generated from raw PCM data (missing WAV header). Audio player might not work.")
+                        except Exception as fallback_error:
+                            st.error(f"Error generating spectrogram: {e}")
                 
         except Exception as e:
             st.error(f"Error loading audio from GCS: {e}")

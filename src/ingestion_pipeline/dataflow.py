@@ -2,6 +2,9 @@ import argparse
 import json
 import logging
 import base64
+import io
+import numpy as np
+from scipy.io import wavfile
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
@@ -18,8 +21,17 @@ class ParseJson(beam.DoFn):
 
 class WriteAudioToGCS(beam.DoFn):
     """Writes audio data to GCS as WAV and updates the record."""
-    def __init__(self, output_bucket):
-        self.output_bucket = output_bucket
+    def __init__(self, output_path):
+        self.output_path = output_path.rstrip('/')
+        # Parse bucket and prefix
+        # Expected format: gs://bucket/prefix/ or just bucket
+        if self.output_path.startswith("gs://"):
+            parts = self.output_path.replace("gs://", "").split("/", 1)
+            self.bucket_name = parts[0]
+            self.prefix = parts[1] if len(parts) > 1 else ""
+        else:
+            self.bucket_name = self.output_path
+            self.prefix = "audio" # Default prefix if only bucket name provided
 
     def process(self, element):
         try:
@@ -31,19 +43,32 @@ class WriteAudioToGCS(beam.DoFn):
                 audio_bytes = base64.b64decode(audio_data)
                 
                 # Create GCS path
-                # Ideally, we should use a proper filename structure
-                filename = f"audio/{timestamp}.wav"
-                gcs_uri = f"gs://{self.output_bucket}/{filename}"
+                if self.prefix:
+                    # If prefix contains wildcards (e.g. audio/*), strip them
+                    clean_prefix = self.prefix.rstrip('*').rstrip('/')
+                    filename = f"{clean_prefix}/{timestamp}.wav"
+                else:
+                    filename = f"audio/{timestamp}.wav" # Should not happen with parsing above but safeguard
+                
+                gcs_uri = f"gs://{self.bucket_name}/{filename}"
                 
                 # Write to GCS
                 storage_client = storage.Client()
-                bucket = storage_client.bucket(self.output_bucket)
+                bucket = storage_client.bucket(self.bucket_name)
                 blob = bucket.blob(filename)
                 
-                # Upload bytes. Assuming audio_data is already a valid WAV file encoded in base64.
-                # If it's raw PCM, we would need to wrap it with RIFF header using wave module.
-                # Based on previous context, we treated it as WAV.
-                blob.upload_from_string(audio_bytes, content_type='audio/wav')
+                # Convert raw PCM bytes to numpy array
+                # Prediction service sends float32 (tobytes)
+                audio_np = np.frombuffer(audio_bytes, dtype=np.float32)
+
+                # Write WAV file to memory buffer
+                with io.BytesIO() as wav_buffer:
+                    # SAMPLE_RATE is known to be 16000 from prediction.py
+                    wavfile.write(wav_buffer, 16000, audio_np)
+                    wav_content = wav_buffer.getvalue()
+
+                    # Upload WAV content
+                    blob.upload_from_string(wav_content, content_type='audio/wav')
                 
                 # Update element
                 element['audio_gcs_uri'] = gcs_uri

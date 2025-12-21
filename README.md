@@ -1,50 +1,78 @@
-# baby-monitor
-Detecting infant crying on remote device using ML for instant notifications
+# Baby Cry Monitoring System
 
-## Running with Docker
+A comprehensive system to detect infant crying using machine learning, process audio data in the cloud, and visualize results on a real-time dashboard.
 
-### Audio Access Setup
+## Architecture
 
-Docker containers need special configuration to access audio devices. Choose the method that works for your system:
+1.  **Edge Detection**: Captures audio and runs inference locally.
+2.  **Data Ingestion**: Uploads raw data to Google Cloud Storage (GCS).
+3.  **Processing Pipeline**: Apache Beam/Dataflow pipeline that:
+    *   Reads raw JSON data from GCS.
+    *   Decodes base64 audio and saves as WAV files to a "processed audio" GCS bucket.
+    *   Writes metadata (timestamp, probability, is_cry, audio_uri) to BigQuery.
+4.  **Dashboard**: Streamlit app that queries BigQuery for insights and fetches audio files from GCS for playback and spectrogram visualization.
 
-#### Option 1: PulseAudio (Recommended for macOS/Linux)
+## Prerequisites
 
-**For macOS:**
-```bash
-# Install PulseAudio on macOS (if not already installed)
-brew install pulseaudio
+- Python 3.8+
+- Google Cloud Platform account with:
+    - BigQuery enabled
+    - Cloud Storage enabled
+    - Dataflow enabled
+- Service account credentials (`google_application_credentials.json`)
 
-# Start PulseAudio server
-pulseaudio --load=module-native-protocol-tcp --exit-idle-time=-1 --daemon
+## Configuration
 
-# Run the container with PulseAudio socket
-docker run -it --rm \
-  -v /tmp/pulse-socket:/tmp/pulse-socket \
-  -e PULSE_SERVER=unix:/tmp/pulse-socket \
-  -e PULSE_COOKIE=/tmp/pulse-cookie \
-  -v ~/.config/pulse:/root/.config/pulse \
-  <image-id>
+Create a `.env` file in the root directory:
+
+```env
+GCP_PROJECT_ID=your-project-id
+BIGQUERY_TABLE_ID=your-project-id.dataset.table
+GOOGLE_APPLICATION_CREDENTIALS=path/to/credentials.json
 ```
 
-**For Linux:**
-```bash
-# Run the container with PulseAudio socket
-docker run -it --rm \
-  -v /run/user/$(id -u)/pulse:/run/user/1000/pulse \
-  -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
-  <image-id>
-```
-
-#### Option 2: ALSA Direct Access (Linux only)
+## Installation
 
 ```bash
-# Run with ALSA device access
-docker run -it --rm \
-  --device /dev/snd \
-  -e ALSA_CARD=0 \
-  <image-id>
+# Install dependencies using uv (or pip)
+uv sync
+# OR
+pip install -r requirements.txt
 ```
 
-#### Option 3: Using Docker Compose
+## Components
 
-Create a `docker-compose.yml` file with the appropriate audio configuration for your system.
+### 1. Dashboard
+
+The dashboard allows you to monitor cry events, view probabilities over time, and listen to recorded audio.
+
+**Run the dashboard:**
+```bash
+streamlit run src/dashboard/app.py
+```
+
+### 2. Ingestion Pipeline
+
+The Dataflow pipeline processes data from the edge device.
+
+**Run locally/Dataflow:**
+```bash
+python src/ingestion_pipeline/dataflow.py \
+  --input_bucket "gs://audio_logs/raw/*" \
+  --output_table "baby-monitor-479819:baby_analytics.prediction_service" \
+  --audio_output_bucket "gs://audio_logs/audio/*" \
+  --runner DirectRunner \
+  --project baby-monitor-479819 \
+  --temp_location "gs://audio_logs/temp/"
+```
+
+### 3. Database Migration
+
+If you need to update the schema (e.g., when moving from specific audio data to GCS URIs):
+Check `schema_migration.sql` for SQL commands to alter the BigQuery table.
+
+## Development
+
+- **`src/detection_service`**: Contains database interaction logic (`db.py`) and specific audio processing logic for the edge.
+- **`src/dashboard`**: UI logic.
+- **`src/ingestion_pipeline`**: Cloud processing logic.
