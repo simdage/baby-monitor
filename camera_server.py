@@ -23,11 +23,35 @@ def generate_frames():
     # Using the rpicam command we verified earlier
     command = ["rpicam-vid", "-t", "0", "--inline", "--width", "640", "--height", "480", "--codec", "mjpeg", "-o", "-"]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, bufsize=0)
+    
+    buffer = b''
     try:
         while True:
-            buffer = process.stdout.read(65536)
-            if not buffer: break
-            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer + b'\r\n')
+            # Read a chunk of data
+            data = process.stdout.read(4096)
+            if not data:
+                break
+            buffer += data
+            
+            # Look for the start and end of the JPEG frame
+            while True:
+                start = buffer.find(b'\xff\xd8')
+                end = buffer.find(b'\xff\xd9')
+                
+                if start != -1 and end != -1:
+                    if start < end:
+                        # We have a full frame
+                        jpg = buffer[start:end+2]
+                        buffer = buffer[end+2:] # Remove the frame from the buffer
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + jpg + b'\r\n')
+                    else:
+                        # The end marker appeared before the start marker, discard the garbage at the beginning
+                        buffer = buffer[start:]
+                else:
+                    # We don't have a full frame yet, need to read more data
+                    break
+                    
     finally:
         process.terminate()
 
@@ -42,4 +66,4 @@ def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=8080)

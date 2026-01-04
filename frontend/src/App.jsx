@@ -123,29 +123,45 @@ const AnalyticsView = ({ logs }) => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Crying Chart */}
-        <Card className="lg:col-span-2" title="Crying Intensity vs. Predictions" subtitle="Real-time analysis from BigQuery data">
-          <div className="h-80 w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={cryingData}>
-                <defs>
-                  <linearGradient id="colorInt" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                />
-                <Area type="monotone" dataKey="intensity" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorInt)" name="Actual Crying" />
-                <Area type="monotone" dataKey="predicted" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" fill="transparent" name="AI Prediction" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+        {/* Main Crying Chart and Live Feed */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card title="Live Camera Feed" className="overflow-hidden">
+            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center">
+              <img src="/video_feed" alt="Live Feed" className="w-full h-full object-contain" />
+              <div className="absolute top-4 left-4 bg-rose-600 text-white text-xs font-bold px-2 py-1 rounded flex items-center shadow-sm animate-pulse">
+                <div className="w-1.5 h-1.5 bg-white rounded-full mr-1.5"></div>
+                LIVE
+              </div>
+              <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md text-white text-xs px-2 py-1 rounded flex items-center space-x-1">
+                <Camera size={12} />
+                <span>Nursery Cam</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Crying Intensity vs. Predictions" subtitle="Real-time analysis from BigQuery data">
+            <div className="h-80 w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={cryingData}>
+                  <defs>
+                    <linearGradient id="colorInt" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  />
+                  <Area type="monotone" dataKey="intensity" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorInt)" name="Actual Crying" />
+                  <Area type="monotone" dataKey="predicted" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" fill="transparent" name="AI Prediction" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
 
         <div className="space-y-6">
           <Card title="Quick Insights" className="bg-indigo-50 border-none">
