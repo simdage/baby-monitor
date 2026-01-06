@@ -27,7 +27,7 @@ SAMPLE_RATE = 16000
 WINDOW_DURATION = 7  # seconds
 WINDOW_SAMPLES = SAMPLE_RATE * WINDOW_DURATION  # 112000 samples
 CHUNK_SIZE = 4000  # Process in smaller chunks for responsiveness
-MODEL_PATH = os.path.join(project_root, "src/model/checkpoints/best_model.pt")
+MODEL_PATH = os.path.join(project_root, "src/device/model/checkpoints/best_model.pt")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Alert Configuration

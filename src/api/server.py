@@ -45,11 +45,6 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
 
 import shutil
 import time
-import random
-
-# ... imports ...
-
-# ... imports ...
 
 def generate_mock_frames():
     """Generates mock video frames (random colored noise) when camera is unavailable."""
