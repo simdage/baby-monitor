@@ -8,3 +8,4 @@ scipy
 matplotlib
 numpy
 google-cloud-storage
+requests

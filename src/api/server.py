@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import sys
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
@@ -45,6 +46,8 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
 import shutil
 import time
 import random
+
+# ... imports ...
 
 # ... imports ...
 
@@ -85,17 +88,19 @@ def generate_mock_frames():
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + dummy_jpeg + b'\r\n')
 
-import shutil
-import time
-import random
-import requests
-
-# ... imports ...
-
 def proxy_remote_feed(url):
     """Proxies the video feed from a remote URL."""
     try:
-        with requests.get(url, stream=True, timeout=5) as r:
+        # Strip generic noise if the user pasted the variable name by accident
+        if url.startswith("CAMERA_SERVER_URL="):
+             url = url.split("=", 1)[1]
+        
+        # Add authentication if credentials are available
+        user = os.getenv("USER")
+        password = os.getenv("PASSWORD")
+        auth = (user, password) if user and password else None
+             
+        with requests.get(url, auth=auth, stream=True, timeout=5) as r:
             r.raise_for_status()
             # Iterate over the response content line by line or chunk by chunk
             # MJPEG streams are multipart/x-mixed-replace. 
