@@ -8,7 +8,6 @@ import pyaudio
 from pathlib import Path
 from dotenv import load_dotenv
 
-
 # Configuration
 load_dotenv()
 
@@ -22,7 +21,7 @@ if project_root not in sys.path:
 
 from src.model.train_model import CryClassifier
 import src.detection_service.db as db
-from src.detection_service.publisher import Publisher
+from src.device.publisher import Publisher
 
 SAMPLE_RATE = 16000
 WINDOW_DURATION = 7  # seconds

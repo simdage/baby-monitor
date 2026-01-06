@@ -16,7 +16,7 @@ load_dotenv()
 # Add project root to path to import from src
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.detection_service import db
+from src.api import db as db
 
 app = FastAPI()
 
