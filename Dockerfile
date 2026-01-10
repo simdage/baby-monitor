@@ -30,7 +30,7 @@ RUN pip install fastapi uvicorn google-cloud-bigquery python-dotenv
 
 # Copy source code
 COPY src/ ./src/
-COPY cloud_function/ ./cloud_function/
+
 # We might need .env if not passed via docker-compose, but usually we don't copy secrets in Dockerfile.
 # Copy built frontend
 COPY --from=build /app/frontend/dist ./frontend/dist
