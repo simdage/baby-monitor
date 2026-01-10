@@ -400,7 +400,7 @@ const LoggingView = ({ logs, onAddLog }) => {
 
 // --- View 3: Analytics Dashboard ---
 
-const AnalyticsView = () => {
+const AnalyticsView = ({ data, stats }) => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -409,7 +409,7 @@ const AnalyticsView = () => {
         <Card title="Weekly Activity Frequency" subtitle="Distribution of events over the last 7 days" icon={BarChart3}>
           <div className="h-80 w-full mt-6">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ANALYTICS_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
@@ -430,7 +430,7 @@ const AnalyticsView = () => {
         <Card title="Nursery Temperature Trend" subtitle="Average daily temperature (°C)" icon={Thermometer}>
           <div className="h-80 w-full mt-6">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={ANALYTICS_DATA} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <LineChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
                 <YAxis domain={[18, 25]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
@@ -454,10 +454,10 @@ const AnalyticsView = () => {
 
       {/* Aggregate Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Feeds" value="45" timeAgo="This week" icon={Milk} colorClass="bg-indigo-50 text-indigo-600" />
-        <StatCard label="Total Diapers" value="58" timeAgo="This week" icon={Waves} colorClass="bg-emerald-50 text-emerald-600" />
-        <StatCard label="Cry Rate" value="-12%" timeAgo="vs last week" icon={TrendingUp} colorClass="bg-rose-50 text-rose-600" />
-        <StatCard label="Avg Temp" value="21.9°C" timeAgo="Ideal range" icon={Thermometer} colorClass="bg-orange-50 text-orange-600" />
+        <StatCard label="Total Feeds" value={stats.totalFeeds} timeAgo="This week" icon={Milk} colorClass="bg-indigo-50 text-indigo-600" />
+        <StatCard label="Total Diapers" value={stats.totalDiapers} timeAgo="This week" icon={Waves} colorClass="bg-emerald-50 text-emerald-600" />
+        <StatCard label="Cry Count" value={stats.totalCries} timeAgo="This week" icon={TrendingUp} colorClass="bg-rose-50 text-rose-600" />
+        <StatCard label="Avg Temp" value={`${stats.avgTemp}°C`} timeAgo="7 day avg" icon={Thermometer} colorClass="bg-orange-50 text-orange-600" />
       </div>
     </div>
   );
@@ -468,18 +468,87 @@ const AnalyticsView = () => {
 export default function App() {
   const [activeTab, setActiveTab] = useState('monitor');
   const [logs, setLogs] = useState(INITIAL_LOGS);
+  const [history, setHistory] = useState([]);
 
-  // Fetch initial logs
+  // Fetch initial logs and history
   useEffect(() => {
-    fetch('/api/logs')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setLogs(data);
-        }
-      })
-      .catch(err => console.error("Failed to fetch logs:", err));
+    Promise.all([
+      fetch('/api/logs').then(res => res.json()),
+      fetch('/api/history').then(res => res.json())
+    ]).then(([logsData, historyData]) => {
+      if (Array.isArray(logsData)) setLogs(logsData);
+      if (Array.isArray(historyData)) setHistory(historyData);
+    }).catch(err => console.error("Failed to fetch data:", err));
   }, []);
+
+  // Process data for analytics
+  const { analyticsData, stats } = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const now = new Date();
+    // Initialize last 7 days buckets
+    const dailyBuckets = Array(7).fill(0).map((_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (6 - i));
+      return {
+        date: d.toDateString(),
+        day: days[d.getDay()],
+        feeds: 0,
+        diapers: 0,
+        cries: 0,
+        temp: 21 + Math.random() * 2 // Mock temp for now as we don't log it
+      };
+    });
+
+    const bucketMap = {};
+    dailyBuckets.forEach((b, i) => bucketMap[b.date] = i);
+
+    let totalFeeds = 0;
+    let totalDiapers = 0;
+
+    // Process Logs
+    logs.forEach(log => {
+      const date = new Date(log.timestamp).toDateString();
+      // Since logs can be older than 7 days, we only count if in mapped buckets
+      // Or if we want strictly last 7 days display?
+      // Let's match strictly by date string
+      const bucketIndex = bucketMap[date];
+      if (bucketIndex !== undefined) {
+        if (log.type === 'feeding') {
+          dailyBuckets[bucketIndex].feeds++;
+          totalFeeds++;
+        } else if (log.type === 'pee' || log.type === 'poop') {
+          dailyBuckets[bucketIndex].diapers++;
+          totalDiapers++;
+        }
+      }
+    });
+
+    let totalCries = 0;
+    // Process History (Cries)
+    history.forEach(item => {
+      // history item: { timestamp: 123456789 (epoch seconds), probability: 0.9, is_cry: true, ... }
+      // Wait, did I fix the history endpoint?
+      // server.py: get_history returns { timestamp: row[0], ... }
+      // And row[0] comes from db.get_recent_predictions_bigquery which returns row.event_timestamp.timestamp() (seconds)
+      // Correct.
+      if (item.is_cry) {
+        const date = new Date(item.timestamp * 1000).toDateString();
+        const bucketIndex = bucketMap[date];
+        if (bucketIndex !== undefined) {
+          dailyBuckets[bucketIndex].cries++;
+          totalCries++;
+        }
+      }
+    });
+
+    const avgTemp = (dailyBuckets.reduce((acc, curr) => acc + curr.temp, 0) / 7).toFixed(1);
+
+    return {
+      analyticsData: dailyBuckets,
+      stats: { totalFeeds, totalDiapers, totalCries, avgTemp }
+    };
+
+  }, [logs, history]);
 
   const addLog = (newLog) => {
     setLogs(prev => [newLog, ...prev]);
@@ -489,7 +558,7 @@ export default function App() {
     switch (activeTab) {
       case 'monitor': return <MonitorView logs={logs} />;
       case 'logging': return <LoggingView logs={logs} onAddLog={addLog} />;
-      case 'analytics': return <AnalyticsView />;
+      case 'analytics': return <AnalyticsView data={analyticsData} stats={stats} />;
       default: return <MonitorView logs={logs} />;
     }
   };

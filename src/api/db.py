@@ -130,7 +130,7 @@ def get_manual_logs_bigquery(limit=100):
             data.append({
                 "type": row.event_type,
                 "details": row.notes,
-                "timestamp": row.event_timestamp.timestamp(), # Return epoch for consistency
+                "timestamp": row.event_timestamp.isoformat(), # Return ISO string for consistency
                 "time_display": row.event_timestamp.strftime("%I:%M %p"), # Pre-format time string
                 "intensity": row.intensity
             })
