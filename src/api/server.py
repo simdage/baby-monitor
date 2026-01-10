@@ -186,6 +186,8 @@ class LogEventRequest(BaseModel):
     notes: str
     timestamp: str # ISO string 
     intensity: str
+    milk_quantity_ml: int = None
+    feeding_time_min: int = None
 
 @app.post("/api/log")
 def log_event(event: LogEventRequest):
@@ -194,7 +196,9 @@ def log_event(event: LogEventRequest):
         event_type=event.event_type,
         notes=event.notes,
         timestamp_iso=event.timestamp,
-        intensity=event.intensity
+        intensity=event.intensity,
+        milk_quantity_ml=event.milk_quantity_ml,
+        feeding_time_min=event.feeding_time_min
     )
     
     if success:

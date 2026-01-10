@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, Cell
+  BarChart, Bar, Legend, Cell, ComposedChart
 } from 'recharts';
 import {
   Baby,
@@ -246,6 +246,8 @@ const LoggingView = ({ logs, onAddLog }) => {
   const [notes, setNotes] = useState('');
   const [time, setTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
   const [intensity, setIntensity] = useState('Medium');
+  const [milkAmount, setMilkAmount] = useState('');
+  const [feedingTime, setFeedingTime] = useState('');
   const [status, setStatus] = useState('');
 
   const handleLog = async () => {
@@ -258,15 +260,23 @@ const LoggingView = ({ logs, onAddLog }) => {
     const timestampDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(hours), parseInt(minutes));
 
     try {
+      const payload = {
+        event_type: selectedType,
+        notes: notes || `${selectedType} event`,
+        timestamp: timestampDate.toISOString(),
+        intensity: intensity
+      };
+
+      // Add optional fields for feeding
+      if (selectedType === 'feeding') {
+        if (milkAmount) payload.milk_quantity_ml = parseInt(milkAmount);
+        if (feedingTime) payload.feeding_time_min = parseInt(feedingTime);
+      }
+
       const response = await fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_type: selectedType,
-          notes: notes || `${selectedType} event`,
-          timestamp: timestampDate.toISOString(),
-          intensity: intensity
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
@@ -275,11 +285,15 @@ const LoggingView = ({ logs, onAddLog }) => {
           type: selectedType,
           details: notes || `${selectedType} event`,
           timestamp: timestampDate.toISOString(),
-          intensity: intensity
+          intensity: intensity,
+          milk_quantity_ml: payload.milk_quantity_ml,
+          feeding_time_min: payload.feeding_time_min
         };
         onAddLog(newLog);
         setStatus('Saved!');
         setNotes('');
+        setMilkAmount('');
+        setFeedingTime('');
         setTimeout(() => setStatus(''), 2000);
       } else {
         setStatus('Error saving');
@@ -319,11 +333,37 @@ const LoggingView = ({ logs, onAddLog }) => {
         <Card title="Event Details" className="md:col-span-2">
           {selectedType ? (
             <div className="space-y-4">
+              {/* Conditional Inputs for Feeding */}
+              {selectedType === 'feeding' && (
+                <div className="grid grid-cols-2 gap-4 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                  <div>
+                    <label className="block text-xs font-bold text-blue-700 mb-2 uppercase tracking-widest">Amount (ml)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-white border-blue-200 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 150"
+                      value={milkAmount}
+                      onChange={e => setMilkAmount(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-blue-700 mb-2 uppercase tracking-widest">Duration (min)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-white border-blue-200 border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 15"
+                      value={feedingTime}
+                      onChange={e => setFeedingTime(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest">Notes / Quantity</label>
+                <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest">Notes</label>
                 <textarea
                   className="w-full bg-slate-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-indigo-500 h-32"
-                  placeholder={`e.g., 120ml, Left side, consistency...`}
+                  placeholder={`e.g., Left side, consistency...`}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                 />
@@ -400,10 +440,30 @@ const LoggingView = ({ logs, onAddLog }) => {
 
 // --- View 3: Analytics Dashboard ---
 
-const AnalyticsView = ({ data, stats }) => {
+const AnalyticsView = ({ data, feedingData, stats }) => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Feeding Analysis */}
+        <Card title="Detailed Feeding Analysis" subtitle="Volume (ml) vs Duration (min) per feed" icon={Milk} className="lg:col-span-2">
+          <div className="h-80 w-full mt-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={feedingData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="timeDisplay" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis yAxisId="left" orientation="left" stroke="#6366f1" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6366f1' }} label={{ value: 'ml', angle: -90, position: 'insideLeft', fill: '#6366f1' }} />
+                <YAxis yAxisId="right" orientation="right" stroke="#f97316" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#f97316' }} label={{ value: 'min', angle: 90, position: 'insideRight', fill: '#f97316' }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 'bold' }} />
+                <Bar yAxisId="left" dataKey="amount" fill="#6366f1" radius={[4, 4, 0, 0]} name="Volume (ml)" barSize={20} />
+                <Line yAxisId="right" type="monotone" dataKey="duration" stroke="#f97316" strokeWidth={3} dot={{ r: 4, fill: '#f97316', strokeWidth: 2, stroke: '#fff' }} name="Duration (min)" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
 
         {/* Weekly Event Frequency */}
         <Card title="Weekly Activity Frequency" subtitle="Distribution of events over the last 7 days" icon={BarChart3}>
@@ -482,7 +542,7 @@ export default function App() {
   }, []);
 
   // Process data for analytics
-  const { analyticsData, stats } = useMemo(() => {
+  const { analyticsData, feedingData, stats } = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const now = new Date();
     // Initialize last 7 days buckets
@@ -543,8 +603,19 @@ export default function App() {
 
     const avgTemp = (dailyBuckets.reduce((acc, curr) => acc + curr.temp, 0) / 7).toFixed(1);
 
+    const feedingData = logs
+      .filter(l => l.type === 'feeding')
+      .map(l => ({
+        timestamp: l.timestamp,
+        timeDisplay: new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        amount: l.milk_quantity_ml || 0,
+        duration: l.feeding_time_min || 0
+      }))
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
     return {
       analyticsData: dailyBuckets,
+      feedingData,
       stats: { totalFeeds, totalDiapers, totalCries, avgTemp }
     };
 
@@ -558,7 +629,7 @@ export default function App() {
     switch (activeTab) {
       case 'monitor': return <MonitorView logs={logs} />;
       case 'logging': return <LoggingView logs={logs} onAddLog={addLog} />;
-      case 'analytics': return <AnalyticsView data={analyticsData} stats={stats} />;
+      case 'analytics': return <AnalyticsView data={analyticsData} feedingData={feedingData} stats={stats} />;
       default: return <MonitorView logs={logs} />;
     }
   };

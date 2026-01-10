@@ -77,7 +77,7 @@ def get_recent_predictions_bigquery(limit=500):
         print(f"Error querying BigQuery: {e}")
         return []
 
-def log_manual_event_bigquery(event_type, notes, timestamp_iso, intensity):
+def log_manual_event_bigquery(event_type, notes, timestamp_iso, intensity, milk_quantity_ml=None, feeding_time_min=None):
     """Log a manual event to BigQuery."""
     project_id = os.getenv("GCP_PROJECT_ID")
     # Default to daily_logs if not specified
@@ -85,13 +85,15 @@ def log_manual_event_bigquery(event_type, notes, timestamp_iso, intensity):
     
     client = bigquery.Client(project=project_id, location="northamerica-northeast1")
     
-    # Table schema expected: event_type (STRING), notes (STRING), timestamp (TIMESTAMP), intensity (STRING)
+    # Table schema expected: event_type (STRING), notes (STRING), event_timestamp (TIMESTAMP), intensity (STRING), milk_quantity_ml (INTEGER/FLOAT), feeding_time_min (INTEGER/FLOAT)
     # Ensure correct format for BQ
     row_to_insert = {
         "event_type": event_type,
         "notes": notes,
         "event_timestamp": timestamp_iso, # Expecting ISO string or datetime
-        "intensity": intensity
+        "intensity": intensity,
+        "milk_quantity_ml": milk_quantity_ml,
+        "feeding_time_min": feeding_time_min
     }
     
     try:
@@ -113,8 +115,11 @@ def get_manual_logs_bigquery(limit=100):
     
     client = bigquery.Client(project=project_id, location="northamerica-northeast1")
     
+    # Select new columns if they exist. Using * might be safer if schema changes often, 
+    # but explicit selection is better for code clarity. 
+    # Let's try to select them, assuming the user has indeed added them to the schema.
     query = f"""
-        SELECT event_type, notes, event_timestamp, intensity
+        SELECT event_type, notes, event_timestamp, intensity, milk_quantity_ml, feeding_time_min
         FROM `{project_id}.{table_id}`
         ORDER BY event_timestamp DESC
         LIMIT {limit}
@@ -132,7 +137,9 @@ def get_manual_logs_bigquery(limit=100):
                 "details": row.notes,
                 "timestamp": row.event_timestamp.isoformat(), # Return ISO string for consistency
                 "time_display": row.event_timestamp.strftime("%I:%M %p"), # Pre-format time string
-                "intensity": row.intensity
+                "intensity": row.intensity,
+                "milk_quantity_ml": row.milk_quantity_ml,
+                "feeding_time_min": row.feeding_time_min
             })
             
         return data
