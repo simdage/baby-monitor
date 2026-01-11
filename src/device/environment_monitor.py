@@ -3,6 +3,14 @@ import digitalio
 from adafruit_bme280 import basic as adafruit_bme280
 import time
 from google.cloud import bigquery
+import os
+from dotenv import load_dotenv
+
+# Configuration
+load_dotenv()
+
+# Apply google credentials
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 i2c = board.I2C()  # uses board.SCL and board.SDA
 bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
