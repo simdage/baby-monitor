@@ -4,11 +4,9 @@ from adafruit_bme280 import basic as adafruit_bme280
 import time
 from google.cloud import bigquery
 
-spi = board.SPI()
-cs = digitalio.DigitalInOut(board.D5)
-bme280 = adafruit_bme280.Adafruit_BME280_SPI(spi, cs)
+i2c = board.I2C()  # uses board.SCL and board.SDA
+bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
 client = bigquery.Client()
-
 
 def main():
 
