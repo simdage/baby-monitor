@@ -45,7 +45,7 @@ def main():
         pressure = sum(press) / len(press)
 
         # Send to BQ table
-        table_id = "baby-analytics.environment_data"
+        table_id = os.getenv("BIGQUERY_TABLE_ID_ENV")
         rows_to_insert = [
             {
                 "temperature": round(temperature, 4),
