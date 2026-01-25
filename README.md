@@ -1,78 +1,94 @@
-# Baby Cry Monitoring System
+# Baby Cry Monitoring AIoT System
 
-A comprehensive system to detect infant crying using machine learning, process audio data in the cloud, and visualize results on a real-time dashboard.
+A comprehensive AI-powered baby monitoring system that combines real-time edge AI, cloud analytics, and a modern web interface.
 
-## Architecture
+## System Architecture
 
-1.  **Edge Detection**: Captures audio and runs inference locally.
-2.  **Data Ingestion**: Uploads raw data to Google Cloud Storage (GCS).
-3.  **Processing Pipeline**: Apache Beam/Dataflow pipeline that:
-    *   Reads raw JSON data from GCS.
-    *   Decodes base64 audio and saves as WAV files to a "processed audio" GCS bucket.
-    *   Writes metadata (timestamp, probability, is_cry, audio_uri) to BigQuery.
-4.  **Dashboard**: Streamlit app that queries BigQuery for insights and fetches audio files from GCS for playback and spectrogram visualization.
+The system is composed of three main layers:
 
-## Prerequisites
+1.  **Edge Device (Raspberry Pi)**:
+    *   **Audio Monitor** (`src/device/audio_monitor.py`): Runs a local PyTorch model to detect baby cries in real-time. Logs events to BigQuery and uploads audio clips to GCS.
+    *   **Video Server** (`src/device/camera_server.py`): Streams low-latency MJPEG video from the Pi Camera.
+    *   **Environment Monitor** (`src/device/environment_monitor.py`): Logs temperature, humidity, and pressure using a BME280 sensor to BigQuery.
+    *   **Service Runner** (`src/device/start_services.py`): Orchestrates all device services concurrently using multiprocesing.
 
-- Python 3.8+
-- Google Cloud Platform account with:
-    - BigQuery enabled
-    - Cloud Storage enabled
-    - Dataflow enabled
-- Service account credentials (`google_application_credentials.json`)
+2.  **Backend API (FastAPI)**:
+    *   Proxies the video feed for secure remote access.
+    *   Provides REST endpoints for manual event logging (Feeding, Sleep, Diaper).
+    *   Retrieves historical logs and analytics from BigQuery.
+
+3.  **Frontend (React + Tailwind)**:
+    *   **Monitor**: Real-time video feed and status cards.
+    *   **Logging**: fast interface for tracking daily care events.
+    *   **Analytics**: Interactive charts for sleep patterns, feeding volumes, cry frequency, and environmental trends.
+
+4.  **AI Agent**:
+    *   An autonomous agent (`baby_monitor_agent`) capable of interacting with the system's data and logs.
+
+## Hardware Requirements
+
+*   Raspberry Pi 4 (or similar)
+*   USB Microphone
+*   Raspberry Pi Camera Module
+*   BME280 Sensor (I2C)
+
+## Quick Start
+
+### 1. Web Application (Mac/PC)
+
+The backend and frontend are Dockerized for easy deployment.
+
+```bash
+# Create a .env file with your credentials (see .env.example)
+# Then run:
+docker compose up --build
+```
+
+Access the app at: `http://localhost:8000` (Frontend is served by the backend or separate dev server depending on config).
+
+### 2. Device Services (Raspberry Pi)
+
+SSH into your Raspberry Pi and run the all-in-one service runner:
+
+```bash
+# Ensure you are in the project root
+python3 src/device/start_services.py
+```
+
+This will launch:
+*   Microphone listening & inference
+*   Camera streaming (Port 8080)
+*   Environment sensor logging
+
+### 3. AI Agent
+
+To run the autonomous agent:
+
+```bash
+adk run baby_monitor_agent
+```
 
 ## Configuration
 
-Create a `.env` file in the root directory:
+Required environment variables (`.env`):
 
 ```env
+# Cloud Config
 GCP_PROJECT_ID=your-project-id
-BIGQUERY_TABLE_ID=your-project-id.dataset.table
+BIGQUERY_TABLE_ID=your-project.dataset.table
+BIGQUERY_LOGS_TABLE_ID=your-project.dataset.logs
+BIGQUERY_TABLE_ID_ENV=your-project.dataset.environment
 GOOGLE_APPLICATION_CREDENTIALS=path/to/credentials.json
+
+# Device Config
+CAMERA_SERVER_URL=http://<PI_IP>:8080/video_feed
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/... (Optional)
 ```
 
-## Installation
+## Directory Structure
 
-```bash
-# Install dependencies using uv (or pip)
-uv sync
-# OR
-pip install -r requirements.txt
-```
-
-## Components
-
-### 1. Dashboard
-
-The dashboard allows you to monitor cry events, view probabilities over time, and listen to recorded audio.
-
-**Run the dashboard:**
-```bash
-streamlit run src/dashboard/app.py
-```
-
-### 2. Ingestion Pipeline
-
-The Dataflow pipeline processes data from the edge device.
-
-**Run locally/Dataflow:**
-```bash
-python src/ingestion_pipeline/dataflow.py \
-  --input_bucket "gs://audio_logs/raw/*" \
-  --output_table "baby-monitor-479819:baby_analytics.prediction_service" \
-  --audio_output_bucket "gs://audio_logs/audio/*" \
-  --runner DirectRunner \
-  --project baby-monitor-479819 \
-  --temp_location "gs://audio_logs/temp/"
-```
-
-### 3. Database Migration
-
-If you need to update the schema (e.g., when moving from specific audio data to GCS URIs):
-Check `schema_migration.sql` for SQL commands to alter the BigQuery table.
-
-## Development
-
-- **`src/detection_service`**: Contains database interaction logic (`db.py`) and specific audio processing logic for the edge.
-- **`src/dashboard`**: UI logic.
-- **`src/ingestion_pipeline`**: Cloud processing logic.
+*   `src/api`: FastAPI backend.
+*   `src/device`: Python scripts running on the edge hardware.
+*   `src/model`: PyTorch model training and definition.
+*   `frontend`: React application.
+*   `baby_monitor_agent`: GenAI agent implementation.
